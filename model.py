@@ -6,6 +6,9 @@ import tensorflow as tf
 import numpy as np
 from collections import namedtuple
 
+from supp_network import Vgg19_simple_api
+import tensorlayer
+
 from module import *
 from utils import *
 
@@ -90,18 +93,36 @@ class sggan(object):
         self.fake_A = self.generator(self.real_B, self.options, True, name="generatorB2A")
         self.fake_B_ = self.generator(self.fake_A, self.options, True, name="generatorA2B")
 
+        ###============================= VGG LOSS===============================### 
+        t_target_image_224 = tf.image.resize_images( self.real_A, size=[224, 224], method=0, align_corners=False)  # resize_target_image_for_vgg # http://tensorlayer.readthedocs.io/en/latest/_modules/tensorlayer/layers.html#UpSampling2dLayer
+        t_predict_image_224 = tf.image.resize_images(self.fake_B, size=[224, 224], method=0, align_corners=False)  # resize_generate_image_for_vgg
+
+        net_vgg, vgg_target_emb = Vgg19_simple_api((t_target_image_224 + 1) / 2, reuse=False)
+        _, vgg_predict_emb = Vgg19_simple_api((t_predict_image_224 + 1) / 2, reuse=True)        
+        vgg_loss = 2e-6 * tensorlayer.cost.mean_squared_error(vgg_predict_emb.outputs, vgg_target_emb.outputs, is_mean=True)
+
+        t_target_image_224_2 = tf.image.resize_images( self.real_B, size=[224, 224], method=0, align_corners=False)  # resize_target_image_for_vgg # http://tensorlayer.readthedocs.io/en/latest/_modules/tensorlayer/layers.html#UpSampling2dLayer
+        t_predict_image_224_2 = tf.image.resize_images(self.fake_A, size=[224, 224], method=0, align_corners=False)  # resize_generate_image_for_vgg
+
+        net_vgg_2, vgg_target_emb_2 = Vgg19_simple_api((t_target_image_224_2 + 1) / 2, reuse=False)
+        _, vgg_predict_emb_2 = Vgg19_simple_api((t_predict_image_224_2 + 1) / 2, reuse=True)       
+        vgg_loss_2 = 2e-6 * tensorlayer.cost.mean_squared_error(vgg_predict_emb_2.outputs, vgg_target_emb_2.outputs, is_mean=True)
+        ###======================================================================###
+
         self.DB_fake = self.discriminator(self.fake_B, self.mask_A, self.options, reuse=False, name="discriminatorB")
         self.DA_fake = self.discriminator(self.fake_A, self.mask_B, self.options, reuse=False, name="discriminatorA")
         self.g_loss_a2b = self.criterionGAN(self.DB_fake, tf.ones_like(self.DB_fake)) \
             + self.L1_lambda * abs_criterion(self.real_A, self.fake_A_) \
             + self.L1_lambda * abs_criterion(self.real_B, self.fake_B_) \
             + self.Lg_lambda * gradloss_criterion(self.real_A, self.fake_B, self.weighted_seg_A) \
-            + self.Lg_lambda * gradloss_criterion(self.real_B, self.fake_A, self.weighted_seg_B)
+            + self.Lg_lambda * gradloss_criterion(self.real_B, self.fake_A, self.weighted_seg_B) \
+            + vgg_loss
         self.g_loss_b2a = self.criterionGAN(self.DA_fake, tf.ones_like(self.DA_fake)) \
             + self.L1_lambda * abs_criterion(self.real_A, self.fake_A_) \
             + self.L1_lambda * abs_criterion(self.real_B, self.fake_B_) \
             + self.Lg_lambda * gradloss_criterion(self.real_A, self.fake_B, self.weighted_seg_A) \
-            + self.Lg_lambda * gradloss_criterion(self.real_B, self.fake_A, self.weighted_seg_B)
+            + self.Lg_lambda * gradloss_criterion(self.real_B, self.fake_A, self.weighted_seg_B) \
+            + vgg_loss_2
         self.g_loss = self.criterionGAN(self.DA_fake, tf.ones_like(self.DA_fake)) \
             + self.criterionGAN(self.DB_fake, tf.ones_like(self.DB_fake)) \
             + self.L1_lambda * abs_criterion(self.real_A, self.fake_A_) \
@@ -163,10 +184,33 @@ class sggan(object):
         t_vars = tf.trainable_variables()
         self.d_vars = [var for var in t_vars if 'discriminator' in var.name]
         self.g_vars = [var for var in t_vars if 'generator' in var.name]
+
+
+
+        ###============================= LOAD VGG ===============================###
+        vgg19_npy_path = "vgg19.npy"
+        if not os.path.isfile(vgg19_npy_path):
+                print("Please download vgg19.npz from : https://github.com/machrisaa/tensorflow-vgg")
+                exit()
+        npz = np.load(vgg19_npy_path, encoding='latin1').item()
+        
+        params = []
+        for val in sorted(npz.items()):
+                W = np.asarray(val[1][0])
+                b = np.asarray(val[1][1])
+                print("  Loading %s: %s, %s" % (val[0], W.shape, b.shape))
+                params.extend([W, b])
+        tensorlayer.files.assign_params(sess, params, net_vgg)
+            # net_vgg.print_params(False)
+            # net_vgg.print_layers()
+        ###=====================================================================###
+
+
         for var in t_vars: print(var.name)
 
     def train(self, args):
         """Train SG-GAN"""
+
         self.lr = tf.placeholder(tf.float32, None, name='learning_rate')
         self.d_optim = tf.train.AdamOptimizer(self.lr, beta1=args.beta1) \
             .minimize(self.d_loss, var_list=self.d_vars)
