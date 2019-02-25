@@ -95,18 +95,20 @@ class sggan(object):
 
         ###============================= VGG LOSS===============================### 
         t_target_image_224 = tf.image.resize_images( self.real_A, size=[224, 224], method=0, align_corners=False)  # resize_target_image_for_vgg # http://tensorlayer.readthedocs.io/en/latest/_modules/tensorlayer/layers.html#UpSampling2dLayer
-        t_predict_image_224 = tf.image.resize_images(self.fake_B, size=[224, 224], method=0, align_corners=False)  # resize_generate_image_for_vgg
+        t_predict_image_224 = tf.image.resize_images(self.fake_A_, size=[224, 224], method=0, align_corners=False)  # resize_generate_image_for_vgg
 
         net_vgg, vgg_target_emb = Vgg19_simple_api((t_target_image_224 + 1) / 2, reuse=False)
         _, vgg_predict_emb = Vgg19_simple_api((t_predict_image_224 + 1) / 2, reuse=True)        
-        vgg_loss = 2e-6 * tensorlayer.cost.mean_squared_error(vgg_predict_emb.outputs, vgg_target_emb.outputs, is_mean=True)
+        vgg_loss =1e+05* tensorlayer.cost.mean_squared_error(vgg_predict_emb.outputs, vgg_target_emb.outputs, is_mean=True)
+        self.vgg_loss = vgg_loss
 
         t_target_image_224_2 = tf.image.resize_images( self.real_B, size=[224, 224], method=0, align_corners=False)  # resize_target_image_for_vgg # http://tensorlayer.readthedocs.io/en/latest/_modules/tensorlayer/layers.html#UpSampling2dLayer
-        t_predict_image_224_2 = tf.image.resize_images(self.fake_A, size=[224, 224], method=0, align_corners=False)  # resize_generate_image_for_vgg
+        t_predict_image_224_2 = tf.image.resize_images(self.fake_B_, size=[224, 224], method=0, align_corners=False)  # resize_generate_image_for_vgg
 
-        net_vgg_2, vgg_target_emb_2 = Vgg19_simple_api((t_target_image_224_2 + 1) / 2, reuse=False)
+        net_vgg_2, vgg_target_emb_2 = Vgg19_simple_api((t_target_image_224_2 + 1) / 2, reuse=True)
         _, vgg_predict_emb_2 = Vgg19_simple_api((t_predict_image_224_2 + 1) / 2, reuse=True)       
-        vgg_loss_2 = 2e-6 * tensorlayer.cost.mean_squared_error(vgg_predict_emb_2.outputs, vgg_target_emb_2.outputs, is_mean=True)
+        vgg_loss_2 =1e+05* tensorlayer.cost.mean_squared_error(vgg_predict_emb_2.outputs, vgg_target_emb_2.outputs, is_mean=True)
+        self.vgg_loss_2 = vgg_loss_2
         ###======================================================================###
 
         self.DB_fake = self.discriminator(self.fake_B, self.mask_A, self.options, reuse=False, name="discriminatorB")
@@ -115,20 +117,21 @@ class sggan(object):
             + self.L1_lambda * abs_criterion(self.real_A, self.fake_A_) \
             + self.L1_lambda * abs_criterion(self.real_B, self.fake_B_) \
             + self.Lg_lambda * gradloss_criterion(self.real_A, self.fake_B, self.weighted_seg_A) \
-            + self.Lg_lambda * gradloss_criterion(self.real_B, self.fake_A, self.weighted_seg_B) \
-            + vgg_loss
+            + self.Lg_lambda * gradloss_criterion(self.real_B, self.fake_A, self.weighted_seg_B) 
+            
         self.g_loss_b2a = self.criterionGAN(self.DA_fake, tf.ones_like(self.DA_fake)) \
             + self.L1_lambda * abs_criterion(self.real_A, self.fake_A_) \
             + self.L1_lambda * abs_criterion(self.real_B, self.fake_B_) \
             + self.Lg_lambda * gradloss_criterion(self.real_A, self.fake_B, self.weighted_seg_A) \
-            + self.Lg_lambda * gradloss_criterion(self.real_B, self.fake_A, self.weighted_seg_B) \
-            + vgg_loss_2
+            + self.Lg_lambda * gradloss_criterion(self.real_B, self.fake_A, self.weighted_seg_B) 
+            
         self.g_loss = self.criterionGAN(self.DA_fake, tf.ones_like(self.DA_fake)) \
             + self.criterionGAN(self.DB_fake, tf.ones_like(self.DB_fake)) \
             + self.L1_lambda * abs_criterion(self.real_A, self.fake_A_) \
             + self.L1_lambda * abs_criterion(self.real_B, self.fake_B_) \
             + self.Lg_lambda * gradloss_criterion(self.real_A, self.fake_B, self.weighted_seg_A) \
-            + self.Lg_lambda * gradloss_criterion(self.real_B, self.fake_A, self.weighted_seg_B)
+            + self.Lg_lambda * gradloss_criterion(self.real_B, self.fake_A, self.weighted_seg_B) \
+            +vgg_loss_2 + vgg_loss
 
         #fake_A
         self.fake_A_sample = tf.placeholder(tf.float32,
@@ -200,7 +203,7 @@ class sggan(object):
                 b = np.asarray(val[1][1])
                 print("  Loading %s: %s, %s" % (val[0], W.shape, b.shape))
                 params.extend([W, b])
-        tensorlayer.files.assign_params(sess, params, net_vgg)
+        tensorlayer.files.assign_params(self.sess, params, net_vgg)
             # net_vgg.print_params(False)
             # net_vgg.print_layers()
         ###=====================================================================###
@@ -256,15 +259,18 @@ class sggan(object):
                 batch_seg_mask_B = np.array(batch_seg_mask_B).astype(np.float32)
                 
                 # Update G network and record fake outputs
-                fake_A, fake_B, fake_A_mask, fake_B_mask, _, summary_str = self.sess.run(
-                    [self.fake_A, self.fake_B, self.mask_B, self.mask_A, self.g_optim, self.g_sum],
+                fake_A, fake_B, fake_A_mask, fake_B_mask, _, summary_str,aaa,vgg_loss1,vgg_loss1_2 = self.sess.run(
+                    [self.fake_A, self.fake_B, self.mask_B, self.mask_A, self.g_optim, self.g_sum, self.g_loss,self.vgg_loss,self.vgg_loss_2 ],
                     feed_dict={self.real_data: batch_images, self.lr: lr, self.seg_data: batch_segs,
                     self.mask_A: batch_seg_mask_A, self.mask_B: batch_seg_mask_B})
+                print("G_loss: "+str(aaa) ) 
+                print("vgg_loss: "+str(vgg_loss1))
+                print("vgg_loss_22: "+str(vgg_loss1_2))
                 self.writer.add_summary(summary_str, counter)
                 [fake_A, fake_B, fake_A_mask, fake_B_mask] = self.pool([fake_A, fake_B, fake_A_mask, fake_B_mask])
                 # Update D network
-                _, summary_str = self.sess.run(
-                    [self.d_optim, self.d_sum],
+                _, summary_str,aaa = self.sess.run(
+                    [self.d_optim, self.d_sum, self.d_loss],
                     feed_dict={self.real_data: batch_images,
                                self.fake_A_sample: fake_A,
                                self.fake_B_sample: fake_B,
@@ -273,6 +279,7 @@ class sggan(object):
                                self.mask_A: batch_seg_mask_A,
                                self.mask_B: batch_seg_mask_B,
                                self.lr: lr})
+                print(aaa)    
                 self.writer.add_summary(summary_str, counter)
 
                 counter += 1

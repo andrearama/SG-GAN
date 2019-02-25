@@ -92,5 +92,5 @@ def preprocess(image_seg):
 
 if __name__ == "__main__":
   maskmap = A_maskmap()
-  preprocess_master("datasets/gta/trainA_seg")
-  preprocess_master("datasets/gta/trainB_seg")
+  preprocess_master("datasets/synthia/trainA_seg")
+  preprocess_master("datasets/synthia/trainB_seg")
