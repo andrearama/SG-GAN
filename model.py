@@ -104,7 +104,7 @@ class sggan(object):
         t_target_image_224_2 = tf.image.resize_images( self.real_B, size=[224, 224], method=0, align_corners=False)  # resize_target_image_for_vgg # http://tensorlayer.readthedocs.io/en/latest/_modules/tensorlayer/layers.html#UpSampling2dLayer
         t_predict_image_224_2 = tf.image.resize_images(self.fake_A, size=[224, 224], method=0, align_corners=False)  # resize_generate_image_for_vgg
 
-        net_vgg_2, vgg_target_emb_2 = Vgg19_simple_api((t_target_image_224_2 + 1) / 2, reuse=False)
+        net_vgg_2, vgg_target_emb_2 = Vgg19_simple_api((t_target_image_224_2 + 1) / 2, reuse=True)
         _, vgg_predict_emb_2 = Vgg19_simple_api((t_predict_image_224_2 + 1) / 2, reuse=True)       
         vgg_loss_2 = 2e-6 * tensorlayer.cost.mean_squared_error(vgg_predict_emb_2.outputs, vgg_target_emb_2.outputs, is_mean=True)
         ###======================================================================###
@@ -200,7 +200,7 @@ class sggan(object):
                 b = np.asarray(val[1][1])
                 print("  Loading %s: %s, %s" % (val[0], W.shape, b.shape))
                 params.extend([W, b])
-        tensorlayer.files.assign_params(sess, params, net_vgg)
+        tensorlayer.files.assign_params(self.sess, params, net_vgg)
             # net_vgg.print_params(False)
             # net_vgg.print_layers()
         ###=====================================================================###
